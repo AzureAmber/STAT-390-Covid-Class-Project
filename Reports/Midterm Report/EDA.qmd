@@ -1,0 +1,270 @@
+---
+title: "Exploratory Data Analysis (EDA)"
+subtitle: "October 25"
+author: "Cindy Ha, Willie Xie, Erica Zhang"
+format: docx
+editor: visual
+execute: 
+  echo: false
+  warning: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+# Load packages 
+library(tidyverse)
+library(skimr)
+library(tidyr)
+library(gridExtra)
+library(tseries)
+library(zoo)
+library(stats)
+
+
+#load data
+data = read_csv('../data/raw_data/owid-covid-data.csv')
+
+g20 = c('Argentina', 'Australia', 'Canada', 'China', 'France', 'Germany',
+        'India', 'Italy', 'Japan', 'South Korea', 'Mexico', 'Russia',
+        'Saudi Arabia', 'South Africa', 'Turkey', 'United Kingdom', 'United States')
+g24 = c('Argentina', 'China', 'Colombia', 'Ecuador', 'Ethiopia', 'India',
+        'Mexico', 'Morocco', 'Pakistan', 'Philippines', 'South Africa', 'Sri Lanka')
+data_cur = data %>%
+  filter(location %in% c(g20, g24)) %>%
+  mutate(G20 = location %in% g20, G24 = location %in% g24)
+
+data_sorted <- data_cur |> 
+  arrange(date) |> 
+  select(date, new_cases) |> 
+  na.omit()
+
+```
+
+# Temporal Visualization 
+We can look at `new_cases` from 2020 to 2023. 
+
+```{r}
+# 1. basic new_cases from 2020 to 2023
+ggplot(data_sorted, aes(x = date, y = new_cases)) + 
+  geom_line() + 
+  labs(x = "Date", y = "New Cases", title = "Daily New Covid Cases") + 
+  theme_bw()
+
+# 2. looking at each of the 4 years 
+ggplot(data_sorted, aes(x = date, y = new_cases)) +
+  geom_line() +
+  facet_wrap(~ format(date, "%Y"), scales = "free_x") +  
+  labs(x = "Date", y = "New Cases") + 
+  theme_bw()
+
+```
+
+# Stationarity 
+Next, we can check if the dataset is stationary or not. This will be done with the Augmeneted Dickey-Fuller Test. 
+
+```{r}
+
+data_ts <- ts(data_sorted |> pull(new_cases), start = c(2020-01-01, 1), frequency = 365)
+adf.test(data_ts)
+```
+
+# Correlation 
+We can also explore the autocorrelation and partial autocorrelation. 
+
+```{r}
+# Autocorrelation
+acf(data_ts, main = "ACF For New Cases")
+
+# Partial Autocorrelation
+pacf(data_ts, main = "PACF for New Cases")
+```
+
+# Seasonal Decomposition
+
+```{r}
+decomposed <- stl(data_ts, s.window = "periodic")
+plot(decomposed)
+
+```
+
+# Univariate Analysis
+
+We start with response variable `new_cases` and check for missingness:
+
+```{r}
+# check for missingness
+if (any(is.na(data_cur$new_cases))) {
+  
+  missing_response <- data_cur[is.na(data_cur$new_cases), c("continent", "location", "date")]
+  
+  missing_response <- missing_response[order(missing_response$date), ]
+  
+  print(missing_response)
+} else {
+  cat("There are no missing values in 'new_cases'.\n")
+}
+```
+
+There are **161** missing response values, mainly at the beginning of the COVID outbreak before 2020/9 or more recently after 2023/5
+
+Then, looking at the distribution of the response variable:
+
+```{r}
+# histogram of the response variable
+
+data_cur %>% 
+  ggplot(aes(x=new_cases)) + 
+  geom_histogram(fill="skyblue", color="black", alpha=0.7) +
+  labs(title="Histogram of New Cases", x="New Cases", y="Count")+
+  theme_bw()
+```
+
+The distribution is heavily skewed to the right.
+
+We thus **log-transform** `new_cases` and look at the distribution after transformation:
+
+```{r}
+# histogram for new_cases with log-transformed x-axis
+data_cur %>% 
+  ggplot(aes(x=new_cases)) + 
+  geom_histogram(fill="skyblue", color="black", alpha=0.7, na.rm = TRUE) +
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  labs(title="Histogram of New Cases (Log Scale)", x="New Cases (Log Scale)", y="Count")+
+  theme_bw()
+```
+
+It looks much more normally distributed now. When it comes to model training, we should probably consider log transforming the response variable first and then de-log when making predictions.
+
+Also, a quick overview of the distribution of significant predictor variables:
+
+```{r}
+#| results: hide
+
+y = data_cur %>% relocate(iso_code, tests_units, .before = continent)
+head(y, n = 5)
+
+x = data_cur %>% select(-c(iso_code, tests_units))
+
+results = data_cur %>% skim_without_charts()
+names_filt = results$skim_variable[results$complete_rate < 0.7]
+
+y = x %>% select(new_cases, any_of(names_filt))
+
+cor(y, use = "pairwise.complete.obs") %>% round(digits = 3)
+
+c('total_tests', 'new_tests',
+  'positive_rate', 'total_vaccinations')
+
+names_filtn = setdiff(names_filt,
+                      c('total_tests', 'new_tests',
+                        'positive_rate', 'total_vaccinations'))
+
+x = data_cur %>% select(-c(iso_code, tests_units)) %>%
+  select(-any_of(names_filtn))
+
+names_col = c('iso_code', 'median_age', 'aged_65_older', 'aged_70_older',
+              'human_development_index', 'new_cases_smoothed', 'new_deaths_smoothed',
+              'new_deaths_smoothed_per_million', 'new_cases_smoothed_per_million')
+
+names_col
+
+x = x %>% select(-any_of(names_col))
+```
+
+```{r}
+vars_to_plot <- names(x)[sapply(x, is.numeric) & !sapply(x, is.factor)]
+vars_to_plot <- vars_to_plot[vars_to_plot != "new_cases"]
+
+plot_list <- lapply(vars_to_plot, function(var_name) {
+  ggplot(x, aes_string(x=var_name)) + 
+    geom_histogram(fill="skyblue", color="black", alpha=0.7, na.rm = TRUE) +
+    labs(x=var_name, y="Count")+
+    theme_bw()
+})
+
+combined_plot <- do.call(grid.arrange, c(plot_list, ncol=5))
+```
+
+We see that most of the predictor variables are also heavily **positively skewed**. Features such as `female_smokers`, `male_smokers`, and `life_expectancy` do have a more even distribution and its time-independence make them good features to use for clustering imputation.
+
+# Bivariate Analysis 
+
+Continuing on, we can also plot the significant predictor variables against `new_cases` and look for any unique relationships that we could further explore. 
+
+```{r}
+# plotting each numeric predictor against new_cases
+plot_list2 <- list()
+
+# loop through each variable and create a scatter plot
+for (var_name in vars_to_plot) {
+  if (var_name %in% colnames(x)) {  # Check if the variable exists in the dataset
+    plot <- ggplot(x, aes(x = .data[[var_name]], y = new_cases)) +
+      geom_point(color = "skyblue", alpha = 0.7, na.rm = TRUE) +
+      labs(x = var_name, y = "new_cases") +
+      theme_bw()
+    plot_list2[[var_name]] <- plot  # Store the plot in the list
+  } else {
+    warning(paste("Variable", var_name, "not found in the dataset. Skipping."))
+  }
+}
+
+
+bivariate_plots <- do.call(grid.arrange, c(plot_list2, ncol=5))
+bivariate_plots
+```
+
+We can see that there are interesting trends for `total_cases`, `new_deaths`, and `reproduction_rate`. 
+
+# Multivariate Analysis
+
+Here are more plots for those three predictors, but this time accounting for location. We can also notice that many countries stop reporting after a certain time and that China's graph also shows a clear pattern for `total_cases` and `new_deaths`. 
+
+```{r}
+
+# total cases
+ggplot(data_cur, aes(x = total_cases, y = new_cases)) + 
+  geom_point(color = "skyblue", alpha = 0.7, na.rm = TRUE) + 
+  facet_wrap(~ location) + 
+  theme_bw()
+
+  # china specifically 
+ggplot(data_cur |> filter(location == "China"), aes(x = total_cases, y = new_cases)) + 
+  geom_point(color = "skyblue", alpha = 0.7, na.rm = TRUE) + 
+  geom_smooth() + 
+  facet_wrap(~ location) + 
+  theme_bw()
+
+# new deaths 
+ggplot(data_cur , aes(x = new_deaths, y = new_cases)) + 
+  geom_point(color = "skyblue", alpha = 0.7, na.rm = TRUE) + 
+  facet_wrap(~ location) + 
+  theme_bw()
+
+  # china specifically
+ggplot(data_cur |> filter(location == "China"), aes(x = new_deaths, y = new_cases)) + 
+  geom_point(color = "skyblue", alpha = 0.7, na.rm = TRUE) + 
+  geom_smooth() + 
+  facet_wrap(~ location) + 
+  theme_bw()
+
+# reproduction rate
+ggplot(data_cur, aes(x = reproduction_rate, y = new_cases)) + 
+  geom_point(color = "skyblue", alpha = 0.7, na.rm = TRUE) + 
+  facet_wrap(~ location) + 
+  theme_bw()
+```
+
+Lastly, this is the correlation plot. 
+```{r}
+# Correlation plot 
+cor_matrix <- cor(x |> select(all_of(vars_to_plot)) |> na.omit())
+corrplot::corrplot(cor_matrix, method = "color", diag = TRUE, 
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7) 
+```
+
+An initial glance shows that there are strong correlations between: 
+
+- `total_cases` & `total_tests`
+- `gdp_per_capita` & `life_expectancy`

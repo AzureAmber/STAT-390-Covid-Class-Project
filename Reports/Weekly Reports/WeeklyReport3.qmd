@@ -1,0 +1,37 @@
+---
+title: "STAT 390 Weekly Report 3"
+subtitle: "Oct 15-20"
+author: "Group 2: Cindy Ha, Willie Xie, Erica Zhang"
+format:
+  pdf:
+    toc: true
+    number-sections: true
+editor: visual
+editor_options: 
+  chunk_output_type: console
+execute: 
+  warning: false
+  echo: false
+---
+
+## Progress/Accomplishments
+
+-   Finishing randomness preprocessing for various model types including linear `Preprocessing Code/preprocess_lm`, tree based `Preprocessing Code/preprocess_tree`, and neural network `Preprocessing Code/preprocess_nn`.
+-   Removed countries in dataset with numerous predictors with large missingness.
+-   Determined dates to split data into training and testing sets. Training will be data before 2023 and testing will starting 2023.
+-   Will use clustering with `life_expectancy` to make predictions for some random missing values and then impute predictor variables like vaccination, extreme poverty and icu units with cluster median/mode. 
+
+## Challenges
+
+-   Deciding how to address missingness for predictors with large missingness for different models (i.e. remove predictors in linear, impute large value for trees, create boolean indicators for neural networks).
+-   Deciding how to address missingness for new models like ARIMA.
+
+## Next Steps
+
+-   Generate validation sets from training set.
+-   Determining how to deal with missingness in the testing set for different models.
+-   EDA should be mostly done - can start with training models.
+ 
+
+
+
