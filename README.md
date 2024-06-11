@@ -4,7 +4,7 @@ The data science capstone project from STAT 390 using a Covid dataset
 It should be noted that this Github repository is a copy with slight adjustments of the actual repository in order to keep the contents simplified and easier to understand.
 The contributors consists of **Cindy H., Willie X., and Erica Z.**
 
-Simply refer to the `Final Report` word document to view the results of this class project.
+Simply refer to the `Final Report` word document or pdf to view the results of this class project.
 
 **Purpose:** 
 The purpose of this project was to find a time series COVID-19 dataset and apply the skills we've developed in the R sequence, as well as new time-series methodologies, to investigate a research question. As the dataset we acquired from Kaggle spanned multiple countries and was updated regularly, we decided upon the following research task: To predict new cases of COVID-19 for G20 and G24 countries on the COUNTRY level. 
